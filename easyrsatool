@@ -1,0 +1,151 @@
+#!/bin/bash
+# OpenVPN Tool
+# to be used with Easy RSA
+# by Joon
+# v1.0 - 20150120
+
+EASYDIR="/opt/easy-rsa"
+KEY_DIR="/etc/openvpn/keys"
+CRLTARGETDIR="/etc/openvpn"
+OVPNTARGETDIR="/root/ovpn"
+CLIENTTEMPLATE="/etc/openvpn/client-template.txt"
+
+
+function add {
+	if [ -f "$KEY_DIR/$1.crt" ]; then
+		printf "Error: Client certificate for $1 already exists.\n"
+		exit 1
+	fi
+	source ./vars
+	echo "Creating client certificate for $1"
+	if [ "$2" = "nopass" ]; then
+		./build-key $1
+	else
+		./build-key-pass $1
+	fi
+}
+
+function renew {
+	if [ ! -f "$KEY_DIR/$1.crt" ]; then
+		printf "Error: Client certificate for $1 not found.\n"
+		exit 1
+	fi
+	source ./vars
+	echo "Renewing client certificate for $1"
+	if [ "$2" = "nopass" ]; then
+		./build-key $1
+	else
+		./build-key-pass $1
+	fi
+}
+
+function revoke {
+	if [ ! -f "$KEY_DIR/$1.crt" ]; then
+		printf "Error: Client certificate for $1 not found.\n"
+		exit 1
+	fi
+	source ./vars
+	./revoke-full "$1"
+	echo "Now copying $KEY_DIR/crl.pem to $CRLTARGETDIR..."
+	cp -f $KEY_DIR/crl.pem $CRLTARGETDIR/
+	chmod 644 $CRLTARGETDIR/crl.pem
+	echo "All done."
+}
+
+function makeovpn {
+	if [ ! -f "$KEY_DIR/$1.key" ] || [ ! -f "$KEY_DIR/$1.crt" ]; then
+		printf "Error: Client key or cert for $1 not found.\n"
+		exit 1
+	fi
+	if [ ! -f "$KEY_DIR/ca.crt" ]; then
+		printf "Error: CA cert not found.\n"
+		exit 1
+	fi
+	if [ ! -f "$KEY_DIR/ta.key" ]; then
+		printf "Error: tls-auth key not found.\n"
+		exit 1
+	fi
+	if [ ! -f "$CLIENTTEMPLATE" ]; then
+		printf "Error: Client template not found.\n"
+		exit 1
+	fi
+	if [ ! -d "$OVPNTARGETDIR" ]; then
+		echo "OVPN dir not found. Creating.."
+		mkdir $OVPNTARGETDIR
+	fi
+	OVPNFILE="$OVPNTARGETDIR/$1.ovpn"
+	if [ -f "$OVPNFILE" ]; then
+		echo "$OVPNFILE already exists! Exiting."
+		exit 1
+	fi
+	source ./vars
+	echo "Creating $1.ovpn..."
+	# Client template
+	cat $CLIENTTEMPLATE > $OVPNFILE
+	# CA cert 
+	echo "<ca>" >> $OVPNFILE
+	cat $KEY_DIR/ca.crt >> $OVPNFILE
+	echo "</ca>" >> $OVPNFILE
+	# Client public cert
+	echo "<cert>" >> $OVPNFILE
+	cat $KEY_DIR/$1.crt | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' >> $OVPNFILE
+	echo "</cert>" >> $OVPNFILE
+	# Client private key
+	echo "<key>" >> $OVPNFILE
+	cat $KEY_DIR/$1.key >> $OVPNFILE
+	echo "</key>" >> $OVPNFILE
+	# tls-auth private key
+	echo "<tls-auth>" >> $OVPNFILE
+	cat $KEY_DIR/ta.key >> $OVPNFILE
+	echo "</tls-auth>" >> $OVPNFILE
+	echo "Removing private key from $KEY_DIR..."
+	srm --dod $KEY_DIR/$1.key
+	echo "Done - saved to $OVPNFILE"
+}
+
+
+#
+# START
+#
+cd $EASYDIR
+
+case "$1" in
+	
+	add)
+		if [ -z "$2" ] || [ "$2" == "nopass" ]; then
+			printf "\nUsage: `basename $0` add <username> {nopass} \n"
+			exit 1
+		fi
+		add "$2" "$3"
+		;;
+
+	renew)
+		if [ -z "$2" ] || [ "$2" == "nopass" ]; then
+			printf "\nUsage: `basename $0` renew <username> {nopass} \n"
+			exit 1
+		fi
+		revoke "$2"
+		renew "$2" "$3"
+		;;
+
+	revoke)
+		if [ -z "$2" ]; then
+			printf "\nUsage: `basename $0` revoke <username> \n"
+			exit 1
+		fi
+		revoke "$2"
+		;;
+
+	makeovpn)
+		if [ -z "$2" ]; then
+			printf "\nUsage: `basename $0` makeovpn <username> \n"
+			exit 1
+		fi
+		makeovpn "$2"
+		;;
+
+	*)
+		echo "Usage: `basename $0` {add|renew|revoke|makeovpn}"
+		;;
+
+esac
