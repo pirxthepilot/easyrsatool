@@ -3,6 +3,7 @@
 # to be used with Easy RSA
 # by Joon
 # v1.0 - 20150120
+# v1.1 - 20150306
 
 EASYDIR="/opt/easy-rsa"
 KEY_DIR="/etc/openvpn/keys"
