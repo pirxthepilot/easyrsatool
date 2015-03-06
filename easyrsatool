@@ -82,6 +82,8 @@ function makeovpn {
 	echo "Creating $1.ovpn..."
 	# Client template
 	cat $CLIENTTEMPLATE > $OVPNFILE
+	# Client private key
+	echo "key $1.key" >> $OVPNFILE
 	# CA cert 
 	echo "<ca>" >> $OVPNFILE
 	cat $KEY_DIR/ca.crt >> $OVPNFILE
@@ -90,15 +92,13 @@ function makeovpn {
 	echo "<cert>" >> $OVPNFILE
 	cat $KEY_DIR/$1.crt | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' >> $OVPNFILE
 	echo "</cert>" >> $OVPNFILE
-	# Client private key
-	echo "<key>" >> $OVPNFILE
-	cat $KEY_DIR/$1.key >> $OVPNFILE
-	echo "</key>" >> $OVPNFILE
 	# tls-auth private key
 	echo "<tls-auth>" >> $OVPNFILE
 	cat $KEY_DIR/ta.key >> $OVPNFILE
 	echo "</tls-auth>" >> $OVPNFILE
-	echo "Removing private key from $KEY_DIR..."
+	echo "Bundling private key with .ovpn file..."
+	cp $KEY_DIR/$1.key $OVPNTARGETDIR/
+	echo "Securely deleting private key from $KEY_DIR..."
 	srm --dod $KEY_DIR/$1.key
 	echo "Done - saved to $OVPNFILE"
 }
